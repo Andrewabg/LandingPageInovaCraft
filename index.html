@@ -518,17 +518,19 @@
     for (var k=0;k<rvs.length;k++) io.observe(rvs[k]);
   }
 
-  // ===== Cerebro neural: nos amostrados de um cerebro, mini-cerebros, pulsos e EXPLOSAO =====
+  // ===== Cerebros neurais espalhados: varios cerebros, mini-cerebros, pulsos e MINI-EXPLOSAO ao passar o mouse =====
   (function(){
     var canvas = document.getElementById('bg');
     if(!canvas) return;
     var ctx = canvas.getContext('2d');
     var mqReduce = window.matchMedia('(prefers-reduced-motion: reduce)');
     var W=0,H=0,DPR=1,raf=null,last=0,pAcc=0,CFG={};
-    var nodes=[], pulses=[], rings=[], sparks=[];
+    var brains=[], pulses=[], rings=[], sparks=[], silhouette=null;
+    var mouse={x:-9999,y:-9999}, hoverBrain=-1, lastBlast=0;
     var palette=[ [20,227,155], [53,199,230] ]; // esmeralda, ciano
 
     function isMobile(){ return window.innerWidth < 768 || ('ontouchstart' in window); }
+    function now(){ return performance.now(); }
 
     function resize(){
       DPR = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -541,78 +543,82 @@
     function config(){
       var mobile=isMobile();
       return {
-        count: mobile?70:150,
-        node: (mobile?1.5:1.9),
-        pulseEvery: mobile?420:240,
-        maxPulses: mobile?6:14,
-        hubs: mobile?4:6,
-        k: 0.02, damp: 0.90        // mola de retorno ao "home" (explode e reassembla)
+        k:0.02, damp:0.90,               // mola de retorno ao "home" (explode e reassembla)
+        node:(mobile?1.5:1.9),
+        pulseEvery: mobile?340:190,
+        maxPulses: mobile?7:18,
+        cooldown: 130                     // ms de debounce da mini-explosao
       };
     }
 
-    // amostra pontos normalizados (-0.5..0.5) da silhueta do emoji cerebro
+    // silhueta do emoji cerebro, normalizada (-0.5..0.5), amostrada uma vez
     function sampleBrain(){
+      if(silhouette) return silhouette;
       var pts=[];
       try{
         var S=260, off=document.createElement('canvas'); off.width=S; off.height=S;
         var o=off.getContext('2d');
         o.font='210px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","EmojiOne Color",sans-serif';
         o.textAlign='center'; o.textBaseline='middle';
-        o.fillText('🧠', S/2, S/2+6); // brain
+        o.fillText('🧠', S/2, S/2+6);
         var d=o.getImageData(0,0,S,S).data;
-        for(var y=0;y<S;y+=2){ for(var x=0;x<S;x+=2){
-          if(d[(y*S+x)*4+3]>70){ pts.push([x/S-0.5, y/S-0.5]); }
-        }}
+        for(var y=0;y<S;y+=2){ for(var x=0;x<S;x+=2){ if(d[(y*S+x)*4+3]>70) pts.push([x/S-0.5,y/S-0.5]); }}
       }catch(e){ pts=[]; }
-      // fallback: nuvem "cerebral" (elipse bi-lobada) se o emoji nao renderizou
-      if(pts.length<40){
-        pts=[];
-        for(var i=0;i<1400;i++){
-          var a=Math.random()*6.2832, r=Math.sqrt(Math.random());
-          var lobe=(Math.random()<0.5?-1:1)*0.16;
-          pts.push([Math.cos(a)*r*0.34+lobe, Math.sin(a)*r*0.36-0.02]);
-        }
+      if(pts.length<40){ pts=[]; for(var i=0;i<1400;i++){ var a=Math.random()*6.2832,r=Math.sqrt(Math.random()),lobe=(Math.random()<0.5?-1:1)*0.16; pts.push([Math.cos(a)*r*0.34+lobe, Math.sin(a)*r*0.36-0.02]); } }
+      silhouette=pts; return pts;
+    }
+
+    function makeBrain(cx,cy,size,count,hubs){
+      var pts=sampleBrain().slice();
+      for(var s=pts.length-1;s>0;s--){ var r=(Math.random()*(s+1))|0,t=pts[s];pts[s]=pts[r];pts[r]=t; }
+      var N=Math.min(count, pts.length), ns=[];
+      for(var i=0;i<N;i++){
+        var hx=cx+pts[i][0]*size, hy=cy+pts[i][1]*size;
+        ns.push({ x:hx+(Math.random()-.5)*8*DPR, y:hy+(Math.random()-.5)*8*DPR, vx:0, vy:0, hx:hx, hy:hy, hub:(i<hubs) });
       }
-      return pts;
+      return { cx:cx, cy:cy, size:size, r2:(size*0.55)*(size*0.55), nodes:ns, link:size*0.11, hubR:(isMobile()?6.5:8.5)*DPR };
     }
 
     function seed(){
-      CFG=config(); nodes=[]; pulses=[]; rings=[]; sparks=[];
-      var pts=sampleBrain();
-      for(var s=pts.length-1;s>0;s--){ var r=(Math.random()*(s+1))|0, t=pts[s]; pts[s]=pts[r]; pts[r]=t; }
-      var N=Math.min(CFG.count, pts.length);
-      var cx=W*0.5, cy=H*0.44, size=Math.min(W,H)*0.62;
-      for(var i=0;i<N;i++){
-        var hx=cx+pts[i][0]*size, hy=cy+pts[i][1]*size;
-        nodes.push({ x:hx+(Math.random()-.5)*8*DPR, y:hy+(Math.random()-.5)*8*DPR, vx:0, vy:0, hx:hx, hy:hy, hub:(i<CFG.hubs) });
+      CFG=config(); brains=[]; pulses=[]; rings=[]; sparks=[]; hoverBrain=-1;
+      var mobile=isMobile(), m=Math.min(W,H);
+      // [fracao do tamanho, nos, hubs] — um cerebro maior + varios menores espalhados
+      var defs = mobile
+        ? [ [0.62, 66, 4], [0.40, 40, 3] ]
+        : [ [0.66, 100, 6], [0.46, 66, 4], [0.38, 50, 3], [0.30, 38, 2], [0.26, 30, 2] ];
+      var spots = mobile
+        ? [ [0.36,0.30], [0.66,0.72] ]
+        : [ [0.26,0.30], [0.78,0.22], [0.60,0.74], [0.14,0.72], [0.88,0.58] ];
+      for(var i=0;i<defs.length;i++){
+        var sp=spots[i%spots.length];
+        var cx=(sp[0]+(Math.random()-.5)*0.07)*W, cy=(sp[1]+(Math.random()-.5)*0.07)*H;
+        brains.push(makeBrain(cx,cy,defs[i][0]*m,defs[i][1],defs[i][2]));
       }
-      CFG.link = size*0.095;
     }
 
     function spawnPulse(){
-      if(!nodes.length) return;
-      var a=(Math.random()*nodes.length)|0, A=nodes[a], best=-1;
-      for (var j=0;j<nodes.length;j++){
-        if(j===a) continue;
-        var dx=A.x-nodes[j].x, dy=A.y-nodes[j].y;
-        if(Math.sqrt(dx*dx+dy*dy)<CFG.link && Math.random()<0.5){ best=j; break; }
-      }
+      if(!brains.length) return;
+      var b=brains[(Math.random()*brains.length)|0], nd=b.nodes;
+      if(!nd.length) return;
+      var a=(Math.random()*nd.length)|0, A=nd[a], best=-1;
+      for(var j=0;j<nd.length;j++){ if(j===a) continue; var dx=A.x-nd[j].x,dy=A.y-nd[j].y; if(Math.sqrt(dx*dx+dy*dy)<b.link && Math.random()<0.5){best=j;break;} }
       if(best<0) return;
-      pulses.push({ a:a, b:best, t:0, sp:0.006+Math.random()*0.01 });
+      pulses.push({ nb:b, a:a, c:best, t:0, sp:0.006+Math.random()*0.01 });
     }
 
-    function explode(mx,my){
-      var R=(isMobile()?170:260)*DPR, force=(isMobile()?9:14)*DPR;
-      for (var i=0;i<nodes.length;i++){
-        var n=nodes[i], dx=n.x-mx, dy=n.y-my, d=Math.sqrt(dx*dx+dy*dy);
-        if(d<R && d>0.01){ var f=(1-d/R)*force; n.vx+=(dx/d)*f; n.vy+=(dy/d)*f; }
+    function explode(mx,my,mini){
+      var R=(mini?(isMobile()?115:150):(isMobile()?170:250))*DPR;
+      var force=(mini?(isMobile()?6:8.5):(isMobile()?9:14))*DPR;
+      for(var bi=0;bi<brains.length;bi++){
+        var nd=brains[bi].nodes;
+        for(var i=0;i<nd.length;i++){
+          var n=nd[i], dx=n.x-mx, dy=n.y-my, d=Math.sqrt(dx*dx+dy*dy);
+          if(d<R && d>0.01){ var f=(1-d/R)*force; n.vx+=(dx/d)*f; n.vy+=(dy/d)*f; }
+        }
       }
-      rings.push({ x:mx, y:my, r:6*DPR, max:R*1.1, a:0.9 });
-      var ns=isMobile()?12:22;
-      for (var k=0;k<ns;k++){
-        var ang=Math.random()*6.2832, spd=(2+Math.random()*5)*DPR;
-        sparks.push({ x:mx, y:my, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, life:1, col:(Math.random()<0.5)?0:1 });
-      }
+      rings.push({ x:mx, y:my, r:5*DPR, max:R*1.05, a:mini?0.7:0.9 });
+      var nsp=mini?(isMobile()?7:12):(isMobile()?12:22);
+      for(var k=0;k<nsp;k++){ var ang=Math.random()*6.2832, spd=(2+Math.random()*(mini?3.5:5))*DPR; sparks.push({x:mx,y:my,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,life:1,col:(Math.random()<0.5)?0:1}); }
     }
 
     // mini-cerebro estilizado (dois lobos + fissura + nucleo) na paleta da marca
@@ -630,53 +636,51 @@
 
     function draw(dt){
       ctx.clearRect(0,0,W,H);
-      var link=CFG.link, k=CFG.k, damp=CFG.damp;
+      var k=CFG.k, damp=CFG.damp;
 
-      // fisica: mola de volta ao home + shimmer (explode e reassembla)
-      for (var i=0;i<nodes.length;i++){
-        var n=nodes[i];
-        n.vx += (n.hx-n.x)*k; n.vy += (n.hy-n.y)*k;
-        n.vx *= damp; n.vy *= damp;
-        n.vx += (Math.random()-.5)*0.05*DPR; n.vy += (Math.random()-.5)*0.05*DPR;
-        n.x += n.vx; n.y += n.vy;
-      }
+      // mini-explosao ao ENTRAR num cerebro com o mouse (uma por passagem)
+      var cur=-1;
+      for(var hb=0;hb<brains.length;hb++){ var bb=brains[hb], ex=mouse.x-bb.cx, ey=mouse.y-bb.cy; if(ex*ex+ey*ey < bb.r2){ cur=hb; break; } }
+      if(cur!==-1 && cur!==hoverBrain){ var tt=now(); if(tt-lastBlast>CFG.cooldown){ explode(mouse.x,mouse.y,true); lastBlast=tt; } }
+      hoverBrain=cur;
 
-      // sinapses
-      for (var i2=0;i2<nodes.length;i2++){
-        var p=nodes[i2];
-        for (var j=i2+1;j<nodes.length;j++){
-          var q=nodes[j], dx=p.x-q.x, dy=p.y-q.y, d=Math.sqrt(dx*dx+dy*dy);
-          if(d<link){
-            var a=(1-d/link)*0.28;
-            ctx.strokeStyle='rgba(45,190,180,'+a.toFixed(3)+')';
-            ctx.lineWidth=DPR*0.7;
-            ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
+      for(var bi=0;bi<brains.length;bi++){
+        var b=brains[bi], nd=b.nodes, link=b.link;
+        // fisica
+        for(var i=0;i<nd.length;i++){
+          var n=nd[i];
+          n.vx += (n.hx-n.x)*k; n.vy += (n.hy-n.y)*k;
+          n.vx *= damp; n.vy *= damp;
+          n.vx += (Math.random()-.5)*0.05*DPR; n.vy += (Math.random()-.5)*0.05*DPR;
+          n.x += n.vx; n.y += n.vy;
+        }
+        // sinapses (dentro do cerebro)
+        for(var i2=0;i2<nd.length;i2++){
+          var p=nd[i2];
+          for(var j=i2+1;j<nd.length;j++){
+            var q=nd[j], dx=p.x-q.x, dy=p.y-q.y, d=Math.sqrt(dx*dx+dy*dy);
+            if(d<link){ var a=(1-d/link)*0.26; ctx.strokeStyle='rgba(45,190,180,'+a.toFixed(3)+')'; ctx.lineWidth=DPR*0.7; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke(); }
           }
         }
-      }
-      // nos: mini-cerebros nos hubs, pontos no resto
-      for (var n3=0;n3<nodes.length;n3++){
-        var nd=nodes[n3];
-        if(nd.hub){ miniBrain(nd.x,nd.y,(isMobile()?7:9)*DPR); }
-        else { ctx.beginPath(); ctx.arc(nd.x,nd.y,CFG.node*DPR,0,6.2832); ctx.fillStyle='rgba(150,235,210,0.6)'; ctx.fill(); }
+        // nos
+        for(var n3=0;n3<nd.length;n3++){ var m2=nd[n3]; if(m2.hub){ miniBrain(m2.x,m2.y,b.hubR); } else { ctx.beginPath(); ctx.arc(m2.x,m2.y,CFG.node*DPR,0,6.2832); ctx.fillStyle='rgba(150,235,210,0.58)'; ctx.fill(); } }
       }
 
       // pulsos de sinal
       pAcc+=dt;
       if(pAcc>CFG.pulseEvery && pulses.length<CFG.maxPulses){ pAcc=0; spawnPulse(); }
-      for (var pi=pulses.length-1; pi>=0; pi--){
-        var pl=pulses[pi], A=nodes[pl.a], B=nodes[pl.b];
+      for(var pi=pulses.length-1; pi>=0; pi--){
+        var pl=pulses[pi], nd2=pl.nb.nodes, A=nd2[pl.a], B=nd2[pl.c];
         if(!A||!B){ pulses.splice(pi,1); continue; }
         pl.t += pl.sp*(dt/16.67);
         if(pl.t>=1){ pulses.splice(pi,1); continue; }
         var px=A.x+(B.x-A.x)*pl.t, py=A.y+(B.y-A.y)*pl.t;
-        var pgr=ctx.createRadialGradient(px,py,0,px,py,4*DPR);
-        pgr.addColorStop(0,'rgba(185,255,238,0.95)'); pgr.addColorStop(1,'rgba(53,199,230,0)');
+        var pgr=ctx.createRadialGradient(px,py,0,px,py,4*DPR); pgr.addColorStop(0,'rgba(185,255,238,0.95)'); pgr.addColorStop(1,'rgba(53,199,230,0)');
         ctx.fillStyle=pgr; ctx.beginPath(); ctx.arc(px,py,4*DPR,0,6.2832); ctx.fill();
       }
 
-      // aneis da explosao
-      for (var ri=rings.length-1; ri>=0; ri--){
+      // aneis
+      for(var ri=rings.length-1; ri>=0; ri--){
         var rg=rings[ri];
         rg.r += (rg.max-rg.r)*0.08 + 1.6*DPR; rg.a *= 0.94;
         if(rg.a<0.03){ rings.splice(ri,1); continue; }
@@ -684,7 +688,7 @@
         ctx.beginPath(); ctx.arc(rg.x,rg.y,rg.r,0,6.2832); ctx.stroke();
       }
       // faiscas
-      for (var si=sparks.length-1; si>=0; si--){
+      for(var si=sparks.length-1; si>=0; si--){
         var sk=sparks[si];
         sk.x+=sk.vx; sk.y+=sk.vy; sk.vx*=0.92; sk.vy*=0.92; sk.life*=0.93;
         if(sk.life<0.05){ sparks.splice(si,1); continue; }
@@ -699,23 +703,28 @@
     function stop(){ if(raf){cancelAnimationFrame(raf); raf=null;} }
 
     function staticFrame(){
-      ctx.clearRect(0,0,W,H); var link=CFG.link;
-      for (var i=0;i<nodes.length;i++){
-        var p=nodes[i];
-        for (var j=i+1;j<nodes.length;j++){
-          var q=nodes[j],dx=p.x-q.x,dy=p.y-q.y,d=Math.sqrt(dx*dx+dy*dy);
-          if(d<link){var a=(1-d/link)*0.24;ctx.strokeStyle='rgba(45,190,180,'+a.toFixed(3)+')';ctx.lineWidth=DPR*0.7;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();}
+      ctx.clearRect(0,0,W,H);
+      for(var bi=0;bi<brains.length;bi++){
+        var b=brains[bi], nd=b.nodes, link=b.link;
+        for(var i=0;i<nd.length;i++){
+          var p=nd[i];
+          for(var j=i+1;j<nd.length;j++){
+            var q=nd[j],dx=p.x-q.x,dy=p.y-q.y,d=Math.sqrt(dx*dx+dy*dy);
+            if(d<link){var a=(1-d/link)*0.22;ctx.strokeStyle='rgba(45,190,180,'+a.toFixed(3)+')';ctx.lineWidth=DPR*0.7;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();}
+          }
+          if(p.hub){ miniBrain(p.x,p.y,b.hubR); } else { ctx.beginPath();ctx.arc(p.x,p.y,CFG.node*DPR,0,6.2832);ctx.fillStyle='rgba(150,235,210,0.55)';ctx.fill(); }
         }
-        if(p.hub){ miniBrain(p.x,p.y,(isMobile()?7:9)*DPR); }
-        else { ctx.beginPath();ctx.arc(p.x,p.y,CFG.node*DPR,0,6.2832);ctx.fillStyle='rgba(150,235,210,0.55)';ctx.fill(); }
       }
     }
 
     function init(){ resize(); seed(); if(mqReduce.matches){ staticFrame(); } else { start(); } }
 
-    // EXPLOSAO ao clicar/tocar em qualquer lugar
-    window.addEventListener('mousedown', function(e){ if(!mqReduce.matches) explode(e.clientX*DPR, e.clientY*DPR); }, {passive:true});
-    window.addEventListener('touchstart', function(e){ if(mqReduce.matches) return; var t=e.touches&&e.touches[0]; if(t) explode(t.clientX*DPR, t.clientY*DPR); }, {passive:true});
+    // MINI-EXPLOSAO ao passar o mouse por cima de um cerebro
+    window.addEventListener('mousemove', function(e){ mouse.x=e.clientX*DPR; mouse.y=e.clientY*DPR; }, {passive:true});
+    window.addEventListener('mouseout', function(){ mouse.x=-9999; mouse.y=-9999; });
+    // toque tambem dispara (mobile)
+    window.addEventListener('touchstart', function(e){ if(mqReduce.matches) return; var t=e.touches&&e.touches[0]; if(t) explode(t.clientX*DPR, t.clientY*DPR, true); }, {passive:true});
+
     var rt;
     window.addEventListener('resize', function(){ clearTimeout(rt); rt=setTimeout(function(){ stop(); init(); },200); }, {passive:true});
     document.addEventListener('visibilitychange', function(){ if(document.hidden) stop(); else if(!mqReduce.matches) start(); });
