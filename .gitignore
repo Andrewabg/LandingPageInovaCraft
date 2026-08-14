@@ -1,0 +1,4 @@
+# Fontes de construção — não vão pro deploy (index.html já é autossuficiente)
+page.html
+page.built.html
+assets/
