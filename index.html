@@ -582,17 +582,15 @@
     function seed(){
       CFG=config(); brains=[]; pulses=[]; rings=[]; sparks=[]; hoverBrain=-1;
       var mobile=isMobile(), m=Math.min(W,H);
-      // [fracao do tamanho, nos, hubs] — um cerebro maior + varios menores espalhados
-      var defs = mobile
-        ? [ [0.62, 66, 4], [0.40, 40, 3] ]
-        : [ [0.66, 100, 6], [0.46, 66, 4], [0.38, 50, 3], [0.30, 38, 2], [0.26, 30, 2] ];
-      var spots = mobile
-        ? [ [0.36,0.30], [0.66,0.72] ]
-        : [ [0.26,0.30], [0.78,0.22], [0.60,0.74], [0.14,0.72], [0.88,0.58] ];
-      for(var i=0;i<defs.length;i++){
-        var sp=spots[i%spots.length];
-        var cx=(sp[0]+(Math.random()-.5)*0.07)*W, cy=(sp[1]+(Math.random()-.5)*0.07)*H;
-        brains.push(makeBrain(cx,cy,defs[i][0]*m,defs[i][1],defs[i][2]));
+      var size=m*(mobile?0.34:0.26);              // tamanho PADRAO igual para todos
+      var nodesPer=mobile?46:56, hubsPer=mobile?2:3;
+      // grade organizada e bem separada
+      var cols=mobile?[0.32,0.68]:[0.1667,0.5,0.8333];
+      var rows=mobile?[0.30,0.70]:[0.30,0.72];
+      for(var r=0;r<rows.length;r++){
+        for(var c=0;c<cols.length;c++){
+          brains.push(makeBrain(cols[c]*W, rows[r]*H, size, nodesPer, hubsPer));
+        }
       }
     }
 
@@ -607,8 +605,9 @@
     }
 
     function explode(mx,my,mini){
-      var R=(mini?(isMobile()?115:150):(isMobile()?170:250))*DPR;
-      var force=(mini?(isMobile()?6:8.5):(isMobile()?9:14))*DPR;
+      // mini-explosao propositalmente sutil/leve
+      var R=(mini?(isMobile()?85:110):(isMobile()?160:240))*DPR;
+      var force=(mini?(isMobile()?3.2:4.2):(isMobile()?8:13))*DPR;
       for(var bi=0;bi<brains.length;bi++){
         var nd=brains[bi].nodes;
         for(var i=0;i<nd.length;i++){
@@ -616,9 +615,9 @@
           if(d<R && d>0.01){ var f=(1-d/R)*force; n.vx+=(dx/d)*f; n.vy+=(dy/d)*f; }
         }
       }
-      rings.push({ x:mx, y:my, r:5*DPR, max:R*1.05, a:mini?0.7:0.9 });
-      var nsp=mini?(isMobile()?7:12):(isMobile()?12:22);
-      for(var k=0;k<nsp;k++){ var ang=Math.random()*6.2832, spd=(2+Math.random()*(mini?3.5:5))*DPR; sparks.push({x:mx,y:my,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,life:1,col:(Math.random()<0.5)?0:1}); }
+      rings.push({ x:mx, y:my, r:4*DPR, max:R*1.05, a:mini?0.34:0.82 });
+      var nsp=mini?(isMobile()?4:6):(isMobile()?12:20);
+      for(var k=0;k<nsp;k++){ var ang=Math.random()*6.2832, spd=(1.4+Math.random()*(mini?2:5))*DPR; sparks.push({x:mx,y:my,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,life:1,col:(Math.random()<0.5)?0:1}); }
     }
 
     // mini-cerebro estilizado (dois lobos + fissura + nucleo) na paleta da marca
