@@ -524,8 +524,8 @@
     if(!canvas) return;
     var ctx = canvas.getContext('2d');
     var mqReduce = window.matchMedia('(prefers-reduced-motion: reduce)');
-    var W=0,H=0,DPR=1,raf=null,last=0,pAcc=0,CFG={};
-    var brains=[], pulses=[], rings=[], sparks=[], silhouette=null;
+    var W=0,H=0,DPR=1,raf=null,last=0,pAcc=0,iAcc=0,CFG={};
+    var brains=[], pulses=[], rings=[], sparks=[], links=[], iPulses=[], silhouette=null;
     var mouse={x:-9999,y:-9999}, hoverBrain=-1, lastBlast=0;
     var palette=[ [20,227,155], [53,199,230] ]; // esmeralda, ciano
 
@@ -580,17 +580,21 @@
     }
 
     function seed(){
-      CFG=config(); brains=[]; pulses=[]; rings=[]; sparks=[]; hoverBrain=-1;
+      CFG=config(); brains=[]; pulses=[]; rings=[]; sparks=[]; iPulses=[]; links=[]; hoverBrain=-1;
       var mobile=isMobile(), m=Math.min(W,H);
-      var size=m*(mobile?0.34:0.26);              // tamanho PADRAO igual para todos
-      var nodesPer=mobile?46:56, hubsPer=mobile?2:3;
-      // grade organizada e bem separada
-      var cols=mobile?[0.32,0.68]:[0.1667,0.5,0.8333];
-      var rows=mobile?[0.30,0.70]:[0.30,0.72];
-      for(var r=0;r<rows.length;r++){
-        for(var c=0;c<cols.length;c++){
-          brains.push(makeBrain(cols[c]*W, rows[r]*H, size, nodesPer, hubsPer));
-        }
+      var jit=function(v){ return v+(Math.random()-.5)*0.03; };
+      // cerebro CENTRAL maior
+      var central=makeBrain(0.5*W, (mobile?0.42:0.46)*H, m*(mobile?0.42:0.36), mobile?68:90, mobile?4:5);
+      brains.push(central);
+      // satelites menores espalhados (posicoes organicas, sem fileira)
+      var spots = mobile
+        ? [ [0.16,0.22],[0.84,0.26],[0.18,0.78],[0.82,0.74] ]
+        : [ [0.13,0.24],[0.87,0.20],[0.08,0.62],[0.93,0.56],[0.22,0.87],[0.80,0.86] ];
+      var ssize=m*(mobile?0.24:0.18), scount=mobile?30:36, shubs=2;
+      for(var i=0;i<spots.length;i++){
+        var b=makeBrain(jit(spots[i][0])*W, jit(spots[i][1])*H, ssize, scount, shubs);
+        brains.push(b);
+        links.push({ x1:central.cx, y1:central.cy, x2:b.cx, y2:b.cy }); // conexao central -> satelite
       }
     }
 
@@ -602,6 +606,13 @@
       for(var j=0;j<nd.length;j++){ if(j===a) continue; var dx=A.x-nd[j].x,dy=A.y-nd[j].y; if(Math.sqrt(dx*dx+dy*dy)<b.link && Math.random()<0.5){best=j;break;} }
       if(best<0) return;
       pulses.push({ nb:b, a:a, c:best, t:0, sp:0.006+Math.random()*0.01 });
+    }
+
+    // pulso que viaja pela conexao entre o cerebro central e um satelite
+    function spawnInterPulse(){
+      if(!links.length) return;
+      var L=links[(Math.random()*links.length)|0], fwd=Math.random()<0.5;
+      iPulses.push({ ax:fwd?L.x1:L.x2, ay:fwd?L.y1:L.y2, bx:fwd?L.x2:L.x1, by:fwd?L.y2:L.y1, t:0, sp:0.004+Math.random()*0.006 });
     }
 
     function explode(mx,my,mini){
@@ -636,6 +647,18 @@
     function draw(dt){
       ctx.clearRect(0,0,W,H);
       var k=CFG.k, damp=CFG.damp;
+
+      // conexoes neurais LEVES entre o cerebro central e os satelites (atras de tudo)
+      ctx.lineWidth=DPR*0.6;
+      for(var li=0;li<links.length;li++){
+        var L=links[li];
+        var lg=ctx.createLinearGradient(L.x1,L.y1,L.x2,L.y2);
+        lg.addColorStop(0,'rgba(45,190,180,0.16)');
+        lg.addColorStop(0.5,'rgba(45,190,180,0.06)');
+        lg.addColorStop(1,'rgba(45,190,180,0.13)');
+        ctx.strokeStyle=lg;
+        ctx.beginPath(); ctx.moveTo(L.x1,L.y1); ctx.lineTo(L.x2,L.y2); ctx.stroke();
+      }
 
       // mini-explosao ao ENTRAR num cerebro com o mouse (uma por passagem)
       var cur=-1;
@@ -678,6 +701,17 @@
         ctx.fillStyle=pgr; ctx.beginPath(); ctx.arc(px,py,4*DPR,0,6.2832); ctx.fill();
       }
 
+      // pulsos viajando pelas conexoes entre cerebros
+      iAcc+=dt;
+      if(iAcc>(isMobile()?820:480) && iPulses.length<(isMobile()?4:8)){ iAcc=0; spawnInterPulse(); }
+      for(var ip=iPulses.length-1; ip>=0; ip--){
+        var IP=iPulses[ip]; IP.t += IP.sp*(dt/16.67);
+        if(IP.t>=1){ iPulses.splice(ip,1); continue; }
+        var qx=IP.ax+(IP.bx-IP.ax)*IP.t, qy=IP.ay+(IP.by-IP.ay)*IP.t;
+        var qg=ctx.createRadialGradient(qx,qy,0,qx,qy,4.5*DPR); qg.addColorStop(0,'rgba(185,255,238,0.9)'); qg.addColorStop(1,'rgba(53,199,230,0)');
+        ctx.fillStyle=qg; ctx.beginPath(); ctx.arc(qx,qy,4.5*DPR,0,6.2832); ctx.fill();
+      }
+
       // aneis
       for(var ri=rings.length-1; ri>=0; ri--){
         var rg=rings[ri];
@@ -703,6 +737,8 @@
 
     function staticFrame(){
       ctx.clearRect(0,0,W,H);
+      ctx.lineWidth=DPR*0.6; ctx.strokeStyle='rgba(45,190,180,0.10)';
+      for(var li=0;li<links.length;li++){ var L=links[li]; ctx.beginPath(); ctx.moveTo(L.x1,L.y1); ctx.lineTo(L.x2,L.y2); ctx.stroke(); }
       for(var bi=0;bi<brains.length;bi++){
         var b=brains[bi], nd=b.nodes, link=b.link;
         for(var i=0;i<nd.length;i++){
