@@ -160,7 +160,7 @@
   .cap svg{width:20px;height:20px;color:var(--emerald);flex:none;}
 
   /* ---- proof ---- */
-  .proof-grid{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:stretch;}
+  .proof-grid{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start;}
   .aria-card{background:linear-gradient(160deg,var(--surface-2),var(--ink-2));
     border:1px solid var(--line-2);border-radius:var(--r);padding:34px 32px;display:flex;flex-direction:column;}
   .aria-card .tag{align-self:flex-start;font-size:.72rem;font-weight:700;letter-spacing:.12em;
@@ -172,16 +172,11 @@
   .chip{font-size:.82rem;font-weight:600;color:var(--text);padding:7px 13px;border-radius:999px;
     background:rgba(255,255,255,.04);border:1px solid var(--line);}
   .demo-card{background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r);
-    padding:8px;position:relative;overflow:hidden;min-height:280px;display:flex;}
-  .demo-inner{flex:1;border:1.5px dashed var(--line-2);border-radius:12px;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
-    text-align:center;padding:30px;background:
-      radial-gradient(60% 60% at 50% 40%,rgba(20,227,155,.07),transparent 70%);}
-  .demo-inner .play{width:62px;height:62px;border-radius:50%;background:var(--grad);
-    display:grid;place-items:center;box-shadow:0 12px 34px -8px var(--glow);}
-  .demo-inner .play svg{width:24px;height:24px;color:#05231a;margin-left:3px;}
-  .demo-inner b{font-family:'Bricolage',sans-serif;font-size:1.12rem;font-weight:700;}
-  .demo-inner span{color:var(--dim);font-size:.9rem;max-width:32ch;}
+    padding:8px;position:relative;overflow:hidden;}
+  .demo-video{width:100%;aspect-ratio:2004/1080;height:auto;display:block;
+    border-radius:12px;background:#000;object-fit:cover;}
+  .demo-cap{color:var(--dim);font-size:.86rem;text-align:center;padding:12px 8px 6px;}
+  .demo-cap b{color:var(--muted);font-weight:700;}
 
   /* ---- founder ---- */
   .founder{display:grid;grid-template-columns:300px 1fr;gap:40px;align-items:center;margin-top:26px;
@@ -409,12 +404,9 @@
             </a>
           </div>
           <div class="demo-card rv">
-            <!-- Troque este bloco pelo vídeo/print real da sua demonstração -->
-            <div class="demo-inner">
-              <div class="play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>
-              <b>Demonstração ao vivo</b>
-              <span>Espaço reservado para o vídeo do agente atendendo e agendando de verdade.</span>
-            </div>
+            <video class="demo-video" controls preload="metadata" playsinline
+                   src="demo.mp4" aria-label="Demonstração da plataforma OiAria"></video>
+            <p class="demo-cap"><b>Demonstração ao vivo</b> · a plataforma OiAria por dentro</p>
           </div>
         </div>
 
