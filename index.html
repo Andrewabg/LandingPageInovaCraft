@@ -307,7 +307,7 @@
 
   <main id="top">
     <!-- HERO -->
-    <section class="hero">
+    <section class="hero" data-qg-section="topo">
       <div class="container hero-grid">
         <div class="hero-copy">
           <p class="eyebrow rv">InovaCraft · Estúdio de IA &amp; Automação</p>
@@ -838,8 +838,10 @@
     var endBox=document.getElementById('simEnd'), contact=document.getElementById('simContact');
     var sessionId='sess-'+Math.random().toString(36).slice(2,12)+Date.now().toString(36);
     var business=null, messages=[], busy=false;
+    // Avisa o QG InovaCraft (rastreio). Se o rastreador não carregar, não quebra nada.
+    function qgt(t,d){ try{ if(window.qg) window.qg.track(t,d); }catch(e){} }
 
-    function open(){ overlay.classList.add('open'); overlay.setAttribute('aria-hidden','false'); }
+    function open(){ overlay.classList.add('open'); overlay.setAttribute('aria-hidden','false'); qgt('sim_open'); }
     function close(){ overlay.classList.remove('open'); overlay.setAttribute('aria-hidden','true'); }
     document.querySelectorAll('[data-sim-open]').forEach(function(b){ b.addEventListener('click', function(e){ e.preventDefault(); open(); }); });
     overlay.addEventListener('click', function(e){ if(e.target===overlay) close(); });
@@ -862,6 +864,7 @@
       var info=document.getElementById('simInfo').value.trim();
       if(!type||!name||!services){ alert('Preencha tipo de negócio, nome e serviços.'); return; }
       business={ type:type, name:name, services:services, info:info };
+      qgt('sim_start', business);
       form.style.display='none'; chat.classList.add('on'); inputRow.classList.add('on');
       addMsg('Oi! 👋 Aqui é o atendimento da '+name+'. Como posso te ajudar?','bot');
       input.focus();
@@ -872,6 +875,7 @@
       if(!text||busy) return;
       busy=true; input.value='';
       addMsg(text,'me'); messages.push({ role:'user', content:text }); typing(true);
+      qgt('sim_msg', { n: messages.filter(function(m){ return m.role==='user'; }).length });
       try{
         var res=await fetch(SIMULATOR_API+'/api/simulator',{
           method:'POST', headers:{'content-type':'application/json'},
@@ -880,7 +884,7 @@
         var data=await res.json(); typing(false);
         var reply=data.reply||'Desculpa, tive um problema aqui.';
         addMsg(reply,'bot'); messages.push({ role:'assistant', content:reply });
-        if(data.done){ inputRow.classList.remove('on'); toEnd(); }
+        if(data.done){ inputRow.classList.remove('on'); toEnd(); qgt('sim_done'); }
       }catch(e){ typing(false); addMsg('Ops, falha de conexão. Tenta de novo?','bot'); }
       busy=false;
     }
@@ -890,6 +894,7 @@
     // contato opcional no fim
     contact.addEventListener('change', function(){
       var v=contact.value.trim(); if(!v||!business) return;
+      qgt('sim_lead', { contact: v, simSessionId: sessionId, business: business });
       fetch(SIMULATOR_API+'/api/simulator/lead',{
         method:'POST', headers:{'content-type':'application/json'},
         body:JSON.stringify({ sessionId:sessionId, business:business, contact:v })
@@ -897,6 +902,10 @@
     });
   })();
 </script>
+
+<!-- QG InovaCraft: rastreio de visitas (sem cookie; ?qg_ignore=1 desliga neste navegador). -->
+<script>window.qg=window.qg||{q:[],track:function(){this.q.push(arguments)}};</script>
+<script defer src="https://inovacraft-qg.q7nbxm.easypanel.host/t.js"></script>
 
 </body>
 </html>
