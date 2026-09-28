@@ -1,4 +1,6 @@
-FROM nginx:alpine
+# Espelho oficial da AWS (mesma imagem do Docker Hub, sem o limite de download por IP que
+# derrubou deploys do OiAria em 24/09/2026 e desta landing em 28/09/2026).
+FROM public.ecr.aws/docker/library/nginx:alpine
 
 # Config enxuta (gzip + headers de segurança)
 COPY default.conf /etc/nginx/conf.d/default.conf
