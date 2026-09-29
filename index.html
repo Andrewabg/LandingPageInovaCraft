@@ -265,8 +265,8 @@
   .sim-end{display:none;flex-direction:column;gap:12px;padding:18px;border-top:1px solid var(--line);text-align:center;}
   .sim-end.on{display:flex;}
   .sim-end p{color:var(--muted);font-size:.95rem;}
-  .sim-end input{background:rgba(255,255,255,.03);color:var(--text);border:1px solid var(--line-2);
-    border-radius:10px;padding:11px 12px;font:inherit;text-align:center;}
+  .sim-err{display:none;color:#FF9B9B;font-size:.84rem;margin:2px 0 12px;}
+  .sim-err.on{display:block;}
 
   /* ---- responsive ---- */
   @media (max-width:900px){
@@ -530,8 +530,10 @@
         <div id="simForm">
           <div class="sim-field"><label>Tipo de negócio *</label><input id="simType" maxlength="60" placeholder="Ex: barbearia, clínica de estética..."></div>
           <div class="sim-field"><label>Nome da empresa *</label><input id="simName" maxlength="80" placeholder="Ex: Barbearia do Zé"></div>
-          <div class="sim-field"><label>Serviços e preços *</label><textarea id="simServices" maxlength="600" placeholder="Ex: Corte R$40, Barba R$30, Combo R$60"></textarea></div>
+          <div class="sim-field"><label>Serviços e preços (opcional)</label><textarea id="simServices" maxlength="600" placeholder="Ex: Corte R$40, Barba R$30, Combo R$60"></textarea><div class="hint">Quanto mais detalhe, mais real fica o teste.</div></div>
           <div class="sim-field"><label>Informações da sua empresa/loja (opcional)</label><textarea id="simInfo" maxlength="600" placeholder="Diferenciais, política de agendamento, formas de pagamento..."></textarea><div class="hint">Opcional · máx. 600 caracteres</div></div>
+          <div class="sim-field"><label for="simPhone">Seu WhatsApp *</label><input id="simPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(27) 99999-9999"><div class="hint">Uso seu número só pra falar com você sobre o teste. Sem spam.</div></div>
+          <p class="sim-err" id="simErr" role="alert"></p>
           <button class="btn btn-primary sim-start" type="button" id="simStart">Iniciar simulação</button>
         </div>
         <div class="sim-chat" id="simChat"></div>
@@ -541,9 +543,8 @@
         <button class="sim-send" type="button" id="simSend">Enviar</button>
       </div>
       <div class="sim-end" id="simEnd">
-        <p>Gostou de como seria o atendimento? 🚀 Fala comigo pra ver rodando de verdade no seu WhatsApp.</p>
+        <p>Gostou de como seria o atendimento? 🚀 Vou te chamar no WhatsApp que você deixou. Se preferir, fala comigo agora:</p>
         <a class="btn btn-primary wa" data-msg="Oi Andrew! Testei o simulador no site e quero ver o agente funcionando no meu negócio.">Falar com o Andrew no WhatsApp</a>
-        <input id="simContact" placeholder="Prefere que eu te chame? Deixe seu WhatsApp (opcional)" maxlength="40">
       </div>
     </div>
   </div>
@@ -835,9 +836,12 @@
     if(!overlay) return;
     var form=document.getElementById('simForm'), chat=document.getElementById('simChat');
     var inputRow=document.getElementById('simInputRow'), input=document.getElementById('simInput');
-    var endBox=document.getElementById('simEnd'), contact=document.getElementById('simContact');
+    var endBox=document.getElementById('simEnd'), errBox=document.getElementById('simErr');
     var sessionId='sess-'+Math.random().toString(36).slice(2,12)+Date.now().toString(36);
-    var business=null, messages=[], busy=false;
+    // business: o que a pessoa digitou (vai pro QG). apiBusiness: o que vai pro servidor do simulador,
+    // que exige serviços; sem eles, o agente de teste confirma valores com a equipe em vez de inventar.
+    var business=null, apiBusiness=null, messages=[], busy=false;
+    var NO_SERVICES='Não informados. Se o cliente perguntar por serviços ou preços, diga que vai confirmar com a equipe.';
     // Avisa o QG InovaCraft (rastreio). Se o rastreador não carregar, não quebra nada.
     function qgt(t,d){ try{ if(window.qg) window.qg.track(t,d); }catch(e){} }
 
@@ -856,15 +860,34 @@
       else if(t){ t.remove(); }
     }
     function toEnd(){ inputRow.classList.remove('on'); endBox.classList.add('on'); }
+    function showErr(msg){ errBox.textContent=msg; errBox.classList.toggle('on', !!msg); }
+    // WhatsApp com DDD (10 ou 11 dígitos), com 55 na frente, ou internacional começando com +.
+    function validPhone(v){
+      var d=v.replace(/[^0-9]/g,'');
+      if(v.charAt(0)==='+') return d.length>=10 && d.length<=15;
+      if(d.charAt(0)==='0') d=d.slice(1);
+      if(d.length===10||d.length===11) return true;
+      return (d.length===12||d.length===13) && d.slice(0,2)==='55';
+    }
 
     document.getElementById('simStart').addEventListener('click', function(){
       var type=document.getElementById('simType').value.trim();
       var name=document.getElementById('simName').value.trim();
       var services=document.getElementById('simServices').value.trim();
       var info=document.getElementById('simInfo').value.trim();
-      if(!type||!name||!services){ alert('Preencha tipo de negócio, nome e serviços.'); return; }
+      var phone=document.getElementById('simPhone').value.trim();
+      if(!type||!name){ showErr('Preencha o tipo de negócio e o nome da empresa.'); return; }
+      if(!validPhone(phone)){ showErr('Digite seu WhatsApp com DDD, por exemplo (27) 99999-9999.'); document.getElementById('simPhone').focus(); return; }
+      showErr('');
       business={ type:type, name:name, services:services, info:info };
+      apiBusiness={ type:type, name:name, services:services||NO_SERVICES, info:info };
       qgt('sim_start', business);
+      // O contato vai antes da conversa: quem desiste no meio já fica registrado.
+      qgt('sim_lead', { contact: phone, simSessionId: sessionId, business: business });
+      fetch(SIMULATOR_API+'/api/simulator/lead',{
+        method:'POST', headers:{'content-type':'application/json'},
+        body:JSON.stringify({ sessionId:sessionId, business:apiBusiness, contact:phone })
+      }).catch(function(){});
       form.style.display='none'; chat.classList.add('on'); inputRow.classList.add('on');
       addMsg('Oi! 👋 Aqui é o atendimento da '+name+'. Como posso te ajudar?','bot');
       input.focus();
@@ -879,7 +902,7 @@
       try{
         var res=await fetch(SIMULATOR_API+'/api/simulator',{
           method:'POST', headers:{'content-type':'application/json'},
-          body:JSON.stringify({ sessionId:sessionId, business:business, messages:messages })
+          body:JSON.stringify({ sessionId:sessionId, business:apiBusiness, messages:messages })
         });
         var data=await res.json(); typing(false);
         var reply=data.reply||'Desculpa, tive um problema aqui.';
@@ -891,15 +914,6 @@
     document.getElementById('simSend').addEventListener('click', send);
     input.addEventListener('keydown', function(e){ if(e.key==='Enter') send(); });
 
-    // contato opcional no fim
-    contact.addEventListener('change', function(){
-      var v=contact.value.trim(); if(!v||!business) return;
-      qgt('sim_lead', { contact: v, simSessionId: sessionId, business: business });
-      fetch(SIMULATOR_API+'/api/simulator/lead',{
-        method:'POST', headers:{'content-type':'application/json'},
-        body:JSON.stringify({ sessionId:sessionId, business:business, contact:v })
-      }).catch(function(){});
-    });
   })();
 </script>
 
