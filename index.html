@@ -224,6 +224,8 @@
   .foot-col a:hover{color:var(--emerald);}
   .copy{margin-top:40px;padding-top:24px;border-top:1px solid var(--line);
     color:var(--dim);font-size:.86rem;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .copy a,.sim-field .hint a{text-decoration:underline;text-underline-offset:2px;}
+  .copy a:hover,.sim-field .hint a:hover{color:var(--emerald);}
 
   /* ---- reveal ---- */
   .rv{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease;}
@@ -513,7 +515,7 @@
         </div>
       </div>
       <div class="copy">
-        <span>© 2026 InovaCraft. Todos os direitos reservados.</span>
+        <span>© 2026 InovaCraft. Todos os direitos reservados. <a href="/privacidade.html">Política de privacidade</a></span>
         <span>Feito com IA, café e código.</span>
       </div>
     </div>
@@ -532,7 +534,7 @@
           <div class="sim-field"><label>Nome da empresa *</label><input id="simName" maxlength="80" placeholder="Ex: Barbearia do Zé"></div>
           <div class="sim-field"><label>Serviços e preços (opcional)</label><textarea id="simServices" maxlength="600" placeholder="Ex: Corte R$40, Barba R$30, Combo R$60"></textarea><div class="hint">Quanto mais detalhe, mais real fica o teste.</div></div>
           <div class="sim-field"><label>Informações da sua empresa/loja (opcional)</label><textarea id="simInfo" maxlength="600" placeholder="Diferenciais, política de agendamento, formas de pagamento..."></textarea><div class="hint">Opcional · máx. 600 caracteres</div></div>
-          <div class="sim-field"><label for="simPhone">Seu WhatsApp *</label><input id="simPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(27) 99999-9999"><div class="hint">Uso seu número só pra falar com você sobre o teste. Sem spam.</div></div>
+          <div class="sim-field"><label for="simPhone">Seu WhatsApp *</label><input id="simPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(27) 99999-9999"><div class="hint">Uso seu número só pra falar com você sobre o teste. Sem spam. <a href="/privacidade.html" target="_blank" rel="noopener">Privacidade</a></div></div>
           <p class="sim-err" id="simErr" role="alert"></p>
           <button class="btn btn-primary sim-start" type="button" id="simStart">Iniciar simulação</button>
         </div>
